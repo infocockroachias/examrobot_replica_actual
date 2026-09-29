@@ -1,0 +1,156 @@
+@import "tailwindcss";
+
+@theme inline {
+  /* ============================================================
+     BRAND PALETTE — "Approaches to IAS"
+     Red = brand color · Black = structural/graphic · White = bg
+     ============================================================ */
+
+  /* Surfaces */
+  --color-navbar-bg: #0a0a0a; /* near-black header */
+  --color-navbar-bg-2: #111111; /* secondary dark */
+  --color-page-bg: #ffffff; /* primary background = white */
+  --color-cream: #faf7f2; /* warm off-white, alternating sections */
+  --color-card-bg: #ffffff;
+  --color-card-border: #e5e7eb; /* neutral gray border */
+
+  /* Text */
+  --color-text-primary: #0a0a0a; /* near-black body/headings */
+  --color-text-secondary: #6b7280; /* muted gray */
+  --color-text-muted: #9ca3af; /* tertiary labels */
+
+  /* Brand red */
+  --color-primary-blue: #dc2626; /* PRIMARY brand red */
+  --color-primary-blue-dark: #b91c1c; /* darker red hover */
+  --color-indigo-accent: #dc2626; /* brand red (replaces indigo) */
+  --color-purple-accent: #b91c1c; /* deep red (replaces purple) */
+
+  /* Tints & functional */
+  --color-success-green: #16a34a; /* functional: correct/visited */
+  --color-success-bg: #dcfce7;
+  --color-danger-red: #dc2626; /* brand red = incorrect too */
+  --color-danger-bg: #fef2f2; /* soft red tint: badges, highlighter */
+  --color-warning-amber: #d97706;
+  --color-warning-bg: #fef3c7;
+  --color-info-teal: #0d9488;
+
+  /* Pills */
+  --color-pill-hot: #dc2626;
+  --color-pill-rising: #d97706;
+  --color-pill-evergreen: #16a34a;
+  --color-pill-sporadic: #6b7280;
+  --color-pill-fading: #9ca3af;
+
+  /* ============================================================
+     TYPOGRAPHY REGISTERS
+     ============================================================ */
+  --font-serif: "Playfair Display", Georgia, serif;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
+  --font-display: "Syne", "Inter", sans-serif; /* oversized headlines */
+  --font-mono: "Space Mono", "Courier New", monospace; /* micro-labels */
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================================
+   GRADIENTS — red-based
+   ============================================================ */
+.gradient-primary {
+  background: linear-gradient(90deg, #dc2626 0%, #b91c1c 100%);
+}
+.gradient-primary:hover {
+  background: linear-gradient(90deg, #b91c1c 0%, #991b1b 100%);
+}
+
+.gradient-teal {
+  background: linear-gradient(90deg, #dc2626 0%, #0a0a0a 100%);
+}
+.gradient-teal:hover {
+  background: linear-gradient(90deg, #b91c1c 0%, #000000 100%);
+}
+
+/* ============================================================
+   TYPOGRAPHY REGISTERS (utility classes)
+   ============================================================ */
+
+/* 1. Display headlines — bold sans, weight 700, tight tracking & leading */
+.font-display {
+  font-family: "Syne", "Inter", sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+/* 2. Micro-labels — uppercase, letter-spaced (~0.05em), monospace */
+.micro-label {
+  font-family: "Space Mono", "Courier New", monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-weight: 400;
+}
+
+/* 3. Serif quotes */
+.font-quote {
+  font-family: "Playfair Display", Georgia, serif;
+  font-style: italic;
+}
+
+/* Brand red text */
+.text-brand {
+  color: #dc2626;
+}
+
+/* Highlighter emphasis — soft red tint box behind text */
+.highlighter {
+  background-color: #fef2f2;
+  padding: 0.05em 0.35em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  border-radius: 2px;
+}
+
+/* ============================================================
+   COMPONENT PRIMITIVES
+   ============================================================ */
+
+/* Smooth scrollbar for dense panels */
+.thin-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.thin-scroll::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 9999px;
+}
+
+/* Pill-shaped button base */
+.btn-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 9999px;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+/* Card: medium radius, 1px border, no heavy shadow */
+.card-soft {
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+}
