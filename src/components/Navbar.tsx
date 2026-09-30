@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronDown, LogOut, User, Menu, LayoutDashboard, FileText } from "lucide-react";
+import { ChevronDown, LogOut, User, Menu, LayoutDashboard, FileText, Settings } from "lucide-react";
 import { Logo } from "@/components/Logo";
 
 export type NavbarAuthState = "logged-out" | "logged-in";
@@ -75,6 +75,14 @@ export default function Navbar({
             className="hidden items-center gap-1.5 text-sm text-white/70 hover:text-white lg:flex"
           >
             CARTA
+          </Link>
+          <Link
+            href="/admin"
+            className="hidden items-center gap-1.5 text-sm text-white/70 hover:text-white lg:flex"
+            prefetch={false}
+          >
+            <Settings className="h-3.5 w-3.5" />
+            Admin
           </Link>
 
           {isLoggedIn ? (

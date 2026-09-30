@@ -212,3 +212,44 @@ export interface PatternDetail {
   exam_timeline: ExamTimelineItem[];
   practice_questions: PatternPracticeQuestion[];
 }
+
+/* ------------------------------------------------------------------ */
+/*  World Events (3D globe)                                             */
+/* ------------------------------------------------------------------ */
+
+export const EVENT_CATEGORIES = [
+  "Politics & Governance",
+  "Conflict & Security",
+  "Economy",
+  "Science & Technology",
+  "Environment",
+  "Disaster",
+  "Society",
+  "Health",
+  "Other",
+] as const;
+
+export type EventCategory = (typeof EVENT_CATEGORIES)[number];
+
+export interface WorldEvent {
+  id: number;
+  external_id: string;
+  source_name: string;
+  title: string;
+  description: string | null;
+  category: string;
+  latitude: number;
+  longitude: number;
+  location_name: string | null;
+  source_url: string | null;
+  published_at: string | null;
+  updated_at: string | null;
+  is_sample: boolean;
+}
+
+export interface EventsResponse {
+  events: WorldEvent[];
+  total: number;
+  categories: string[];
+  generated_at: string;
+}

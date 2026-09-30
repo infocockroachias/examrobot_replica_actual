@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { AccentButton, GoogleLoginButton, OutlineButton } from "@/components/Buttons";
@@ -22,6 +23,19 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
+
+/* ------------------------------------------------------------------ */
+/*  Globe visual — client-only (Three.js). Lazy-loaded so it never     */
+/*  blocks the SSR/initial paint.                                      */
+/* ------------------------------------------------------------------ */
+const GlobeVisual = dynamic(() => import("@/components/GlobeVisual"), {
+  ssr: false,
+  loading: () => (
+    <div className="mx-auto flex h-[420px] w-[420px] items-center justify-center">
+      <div className="h-40 w-40 animate-spin rounded-full border-2 border-card-border border-t-primary-blue" />
+    </div>
+  ),
+});
 
 /* ------------------------------------------------------------------ */
 /*  Announcement banner — red strip, dismissible                       */
@@ -177,6 +191,11 @@ function HeroSection() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Globe visual — illustrative, between hero and pull-quote */}
+      <div className="mx-auto mt-12 flex justify-center px-6">
+        <GlobeVisual />
       </div>
 
       {/* Blockquote card — serif italic, red left border */}
