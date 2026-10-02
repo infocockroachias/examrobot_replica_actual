@@ -375,3 +375,36 @@ export interface ImportBatch {
   invalid_count: number;
   committed_question_ids: number[];
 }
+
+// ---------------------------------------------------------------------------
+// Mentorship
+// ---------------------------------------------------------------------------
+
+export type MentorshipStatus = "pending" | "answered" | "resolved";
+
+export const MENTORSHIP_STATUSES: MentorshipStatus[] = [
+  "pending",
+  "answered",
+  "resolved",
+];
+
+export interface MentorshipReply {
+  id: number;
+  question_id: number;
+  responder_id: string | null;
+  reply_text: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MentorshipQuestion {
+  id: number;
+  student_id: string;
+  student_name: string;
+  subject: string | null;
+  question_text: string;
+  status: MentorshipStatus;
+  created_at: string;
+  updated_at: string;
+  replies: MentorshipReply[];
+}

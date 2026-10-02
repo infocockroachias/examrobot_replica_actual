@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   ListChecks,
   Layers3,
+  MessageSquare,
   Search,
   Sparkles,
   Upload,
@@ -34,6 +35,7 @@ import DataQualitySection from "./DataQualitySection";
 import ReviewSection from "./ReviewSection";
 import AnalyticsSection from "./AnalyticsSection";
 import SubjectsSection from "./SubjectsSection";
+import MentorshipSection from "./MentorshipSection";
 
 type Section =
   | "dashboard"
@@ -48,7 +50,8 @@ type Section =
   | "topic-intelligence"
   | "provenance"
   | "test-series"
-  | "pattern-xray";
+  | "pattern-xray"
+  | "mentorship";
 
 const NAV: { key: Section; label: string; icon: React.ReactNode; group: string }[] = [
   { key: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" />, group: "Overview" },
@@ -64,6 +67,7 @@ const NAV: { key: Section; label: string; icon: React.ReactNode; group: string }
   { key: "provenance", label: "PYQ Deep Decode", icon: <Layers className="h-4 w-4" />, group: "Intelligence" },
   { key: "pattern-xray", label: "Pattern X-Ray", icon: <Zap className="h-4 w-4" />, group: "Intelligence" },
   { key: "test-series", label: "Topic Mastery", icon: <ListChecks className="h-4 w-4" />, group: "Testing" },
+  { key: "mentorship", label: "Mentorship", icon: <MessageSquare className="h-4 w-4" />, group: "Testing" },
 ];
 
 export default function AdminPage() {
@@ -114,6 +118,8 @@ export default function AdminPage() {
         return <TestSeriesSection />;
       case "pattern-xray":
         return <PatternXraySection />;
+      case "mentorship":
+        return <MentorshipSection />;
       default:
         return null;
     }
@@ -240,6 +246,12 @@ function DashboardView({ stats, error }: { stats: AdminStats | null; error: stri
           progress={briefPct}
           progressColor="bg-primary-blue"
         />
+        <StatCard
+          icon={<MessageSquare className="h-5 w-5 text-info-teal" />}
+          value={String(stats.mentorship_questions)}
+          label="Doubts"
+          sublabel={`${stats.mentorship_pending} awaiting reply`}
+        />
       </div>
 
       {/* Health + activity row */}
@@ -335,6 +347,11 @@ function DashboardView({ stats, error }: { stats: AdminStats | null; error: stri
             icon={<Zap className="h-4 w-4 text-warning-amber" />}
             title="Pattern X-Ray"
             desc="Recurring question patterns with linked questions. Manage categories, patterns, and question links."
+          />
+          <FeatureMap
+            icon={<MessageSquare className="h-4 w-4 text-info-teal" />}
+            title="Mentorship"
+            desc="Student doubts and guidance conversations. Reply to doubts, track status from pending → answered → resolved."
           />
         </div>
       </div>

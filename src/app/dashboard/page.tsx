@@ -5,6 +5,7 @@ import Navbar from "@/components/Navbar";
 import AccordionRow from "@/components/AccordionRow";
 import {
   BookOpen,
+  MessageSquare,
   Newspaper,
   Pencil,
   Target,
@@ -92,6 +93,27 @@ const accordionItems = [
     buttonLabel: "Explore Pattern X-Ray →",
     buttonVariant: "primary" as const,
     buttonHref: "/pattern-xray",
+    buttonPrefetch: false,
+  },
+  {
+    icon: <MessageSquare className="h-5 w-5 text-info-teal" />,
+    iconBg: "bg-teal-50",
+    title: "Mentorship",
+    subtitle: "ASK · GET GUIDANCE · IMPROVE",
+    quote:
+      "I have a doubt. I need a clear explanation, not just an answer.",
+    body: "Stuck on a concept? Confused by a question? Ask your mentor directly and get a clear, written explanation that actually resolves the doubt — not a one-line hint.",
+    bullets: [
+      "Describe your doubt in your <strong>own words</strong>",
+      "Get a <strong>detailed written response</strong> from a mentor",
+      "Track status: <strong>Pending → Answered → Resolved</strong>",
+      "Reopen any doubt to <strong>read the full conversation</strong>",
+    ],
+    tagline:
+      "A good doubt asked is half-solved. We make sure it's fully solved.",
+    buttonLabel: "Ask Your Doubt →",
+    buttonVariant: "primary" as const,
+    buttonHref: "/mentorship",
     buttonPrefetch: false,
   },
   {
