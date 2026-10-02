@@ -4,6 +4,9 @@ import {
   EventsResponse,
   ImportBatch,
   ImportPreview,
+  MentorshipQuestion,
+  MENTORSHIP_STATUSES,
+  MentorshipStatus,
   PatternCategoriesResponse,
   PatternDetail,
   PatternListItem,
@@ -146,6 +149,8 @@ export interface AdminStats {
   pattern_categories: number;
   patterns: number;
   patterns_with_brief: number;
+  mentorship_questions: number;
+  mentorship_pending: number;
   // Enhanced dashboard fields.
   content_health: number;
   unclassified_count: number;
@@ -841,3 +846,99 @@ export function getEvents(filters: EventFilters = {}): Promise<EventsResponse> {
 }
 
 export { type WorldEvent };
+
+/* ------------------------------------------------------------------ */
+/*  Mentorship — student-facing (public)                                */
+/* ------------------------------------------------------------------ */
+
+/** A stable per-browser student token. Generated once, persisted in localStorage. */
+export function getStudentId(): string {
+  const KEY = "erm_student_id";
+  try {
+    let id = localStorage.getItem(KEY);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(KEY, id);
+    }
+    return id;
+  } catch {
+    // localStorage blocked (private mode etc.) — fall back to session-only.
+    if (!(globalThis as any).__erm_sid) {
+      (globalThis as any).__erm_sid = crypto.randomUUID();
+    }
+    return (globalThis as any).__erm_sid;
+  }
+}
+
+export interface MentorshipCreateInput {
+  question_text: string;
+  student_name?: string;
+  subject?: string | null;
+}
+
+export function createMentorship(
+  input: MentorshipCreateInput,
+): Promise<MentorshipQuestion> {
+  const body = {
+    student_id: getStudentId(),
+    question_text: input.question_text,
+    student_name: input.student_name || "Aspirant",
+    subject: input.subject ?? null,
+  };
+  return fetchJSON<MentorshipQuestion>(`${API_BASE}/mentorship`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function getMyMentorship(status?: MentorshipStatus): Promise<MentorshipQuestion[]> {
+  const params = new URLSearchParams({ student_id: getStudentId() });
+  if (status) params.set("status", status);
+  return fetchJSON<MentorshipQuestion[]>(`${API_BASE}/mentorship?${params}`);
+}
+
+export function getMentorship(questionId: number): Promise<MentorshipQuestion> {
+  const params = new URLSearchParams({ student_id: getStudentId() });
+  return fetchJSON<MentorshipQuestion>(`${API_BASE}/mentorship/${questionId}?${params}`);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Mentorship — admin                                                  */
+/* ------------------------------------------------------------------ */
+
+export function getAdminMentorship(status?: MentorshipStatus): Promise<MentorshipQuestion[]> {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  const qs = params.toString();
+  return adminFetch<MentorshipQuestion[]>(`/mentorship${qs ? `?${qs}` : ""}`);
+}
+
+export function getAdminMentorshipQuestion(questionId: number): Promise<MentorshipQuestion> {
+  return adminFetch<MentorshipQuestion>(`/mentorship/${questionId}`);
+}
+
+export function replyToMentorship(
+  questionId: number,
+  replyText: string,
+  responderId?: string,
+): Promise<MentorshipQuestion> {
+  return adminFetch(`/mentorship/${questionId}/reply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reply_text: replyText, responder_id: responderId ?? null }),
+  });
+}
+
+export function updateMentorshipStatus(
+  questionId: number,
+  status: MentorshipStatus,
+): Promise<MentorshipQuestion> {
+  return adminFetch(`/mentorship/${questionId}/status`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+}
+
+export { MENTORSHIP_STATUSES, type MentorshipStatus, type MentorshipQuestion };
