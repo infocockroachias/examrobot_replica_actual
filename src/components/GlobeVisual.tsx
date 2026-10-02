@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Globe from "react-globe.gl";
-import { Color, FrontSide, ShaderMaterial, Vector3 } from "three";
+import * as THREE from "three";
+import { CanvasTexture, Color, FrontSide, ShaderMaterial, Texture, Vector3 } from "three";
+import * as topojson from "topojson-client";
+import countries110m from "world-atlas/countries-110m.json";
 import { Badge } from "@/components/Badge";
 import { getEvents, type WorldEvent } from "@/lib/api";
 
@@ -82,8 +85,18 @@ function subsolarDirection(date: Date): Vector3 {
 
 const VERTEX_SHADER = /* glsl */ `
   varying vec3 vWorldNormal;
+  varying vec2 vUv;
   void main() {
     vWorldNormal = normalize(mat3(modelMatrix) * normal);
+    // Compute equirectangular UV from sphere position (Y-up sphere).
+    // Three.js SphereGeometry has x = -cos(theta)*sin(phi), z = sin(theta)*sin(phi),
+    // so atan2(z, -x) gives the correct longitude (theta), not atan2(z, x).
+    vec3 p = normalize(position);
+    float lat = asin(clamp(p.y, -1.0, 1.0));
+    float lng = atan(p.z, -p.x);
+    // Clamp v to avoid pole singularity artifacts.
+    float v = (1.57079633 - lat) / 3.14159265;
+    vUv = vec2((lng + 3.14159265) / 6.2831853, clamp(v, 0.001, 0.999));
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
@@ -94,7 +107,10 @@ const FRAGMENT_SHADER = /* glsl */ `
   uniform vec3 uDayColor;
   uniform vec3 uNightColor;
   uniform float uAmbient;
+  uniform sampler2D uBorders;
+  uniform float uBorderOpacity;
   varying vec3 vWorldNormal;
+  varying vec2 vUv;
   void main() {
     vec3 n = normalize(vWorldNormal);
     float d = dot(n, normalize(uSunDir));
@@ -103,22 +119,158 @@ const FRAGMENT_SHADER = /* glsl */ `
     vec3 col = mix(uNightColor, uDayColor, t);
     // Faint ambient so the night hemisphere isn't pure black.
     col += uNightColor * uAmbient;
+    // Land fill from the baked texture. The green channel holds the filled
+    // land mask (1 = land, 0 = ocean); the red channel holds border lines.
+    vec4 landTex = texture2D(uBorders, vUv);
+    float land = landTex.g;
+    float border = landTex.r;
+    vec3 landColor = vec3(0.72, 0.08, 0.08);
+    vec3 borderColor = vec3(1.0, 1.0, 1.0);
+    col = mix(col, landColor, land);
+    col = mix(col, borderColor, border * uBorderOpacity);
     gl_FragColor = vec4(col, 1.0);
   }
 `;
 
-function createDayNightMaterial(): ShaderMaterial {
+function createDayNightMaterial(bordersTexture: Texture): ShaderMaterial {
   return new ShaderMaterial({
     uniforms: {
       uSunDir: { value: new Vector3(0, 0, 1) },
       uDayColor: { value: new Color(0.085, 0.085, 0.10) }, // subtly brighter
       uNightColor: { value: new Color(0.030, 0.030, 0.038) }, // near-black
       uAmbient: { value: 0.4 },
+      uBorders: { value: bordersTexture },
+      uBorderOpacity: { value: 1.0 },
     },
     vertexShader: VERTEX_SHADER,
     fragmentShader: FRAGMENT_SHADER,
     side: FrontSide,
   });
+}
+
+/* ------------------------------------------------------------------ */
+/*  Country border texture                                             */
+/*  Draws Natural Earth boundaries onto a 2:1 equirectangular canvas,  */
+/*  returns a CanvasTexture for the globe shader to sample.            */
+/* ------------------------------------------------------------------ */
+
+const TEX_W = 2048;
+const TEX_H = 1024;
+
+function lngToX(lng: number): number {
+  return ((lng + 180) / 360) * TEX_W;
+}
+
+function latToY(lat: number): number {
+  return ((90 - lat) / 180) * TEX_H;
+}
+
+function drawCountryBorders(features: any[]): CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = TEX_W;
+  canvas.height = TEX_H;
+  const ctx = canvas.getContext("2d")!;
+  ctx.clearRect(0, 0, TEX_W, TEX_H);
+
+  // Helper: draw a ring at a given longitude offset (handles antimeridian
+  // wrapping — polygons that cross lng ±180° are drawn again shifted ±360°
+  // so the fill/stroke wraps seamlessly on the globe).
+  const drawRing = (
+    ring: number[][],
+    drawFn: (x: number, y: number, first: boolean) => void,
+    offset: number,
+  ) => {
+    for (let i = 0; i < ring.length; i++) {
+      const [lng, lat] = ring[i];
+      const x = lngToX(lng + offset);
+      const y = latToY(lat);
+      drawFn(x, y, i === 0);
+    }
+  };
+
+  // Determine if a ring crosses the antimeridian (a jump > 180° between
+  // consecutive vertices means it wraps around).
+  const crossesAntimeridian = (ring: number[][]): boolean => {
+    for (let i = 1; i < ring.length; i++) {
+      if (Math.abs(ring[i][0] - ring[i - 1][0]) > 180) return true;
+    }
+    return false;
+  };
+
+  // Track rings with their source feature so we can skip Antarctica's
+  // outline (it's not a country border — drawing it produces a horizontal
+  // ring across the south pole on the globe).
+  const allRings: { ring: number[][]; skipBorder: boolean }[] = [];
+  for (const feature of features) {
+    const geom = feature.geometry;
+    if (!geom) continue;
+    const coords =
+      geom.type === "Polygon"
+        ? geom.coordinates
+        : geom.type === "MultiPolygon"
+          ? geom.coordinates.flat()
+          : null;
+    if (coords) {
+      // Antarctica and Fiji both have polygons that span all longitudes
+      // (cross the antimeridian with a 360° jump). Stroking them draws a
+      // hard horizontal ring across the texture — Antarctica near the south
+      // pole, Fiji near the equator. Neither is a country border, so skip
+      // their outlines.
+      const name = feature.properties?.name;
+      const skipBorder = name === "Antarctica" || name === "Fiji";
+      for (const ring of coords) {
+        allRings.push({ ring, skipBorder });
+      }
+    }
+  }
+
+  // --- Channel G (green): filled land mask drawn first ---
+  ctx.fillStyle = "#00ff00";
+  for (const { ring } of allRings) {
+    const offsets = crossesAntimeridian(ring) ? [-360, 0, 360] : [0];
+    for (const off of offsets) {
+      ctx.beginPath();
+      drawRing(ring, (x, y, first) => {
+        if (first) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }, off);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // --- Channel R (red): border lines drawn on top ---
+  ctx.strokeStyle = "#ff0000";
+  ctx.lineWidth = 2.2;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+
+  for (const { ring, skipBorder } of allRings) {
+    if (skipBorder) continue;
+    const offsets = crossesAntimeridian(ring) ? [-360, 0, 360] : [0];
+    for (const off of offsets) {
+      ctx.beginPath();
+      drawRing(ring, (x, y, first) => {
+        if (first) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }, off);
+      ctx.closePath();
+      ctx.stroke();
+    }
+  }
+
+  const tex = new CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  // The canvas is drawn with north at the top (y=0) and south at the bottom
+  // (y=TEX_H). The vertex shader maps the north pole to v=0 and south pole to
+  // v=1. CanvasTexture defaults to flipY=true, which would sample v=0 from
+  // the canvas bottom (south) — vertically inverting the continents. Set
+  // flipY=false so v=0 samples the canvas top (north), keeping the globe
+  // north-up.
+  tex.flipY = false;
+  tex.needsUpdate = true;
+  return tex;
 }
 
 /* ------------------------------------------------------------------ */
@@ -202,13 +354,43 @@ export default function GlobeVisual() {
   const [reducedMotion, setReducedMotion] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [now, setNow] = useState<number>(Date.now());
+  const [globeSize, setGlobeSize] = useState(GLOBE_SIZE);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
-  /* Day/night material — created once, sun uniform updated on a timer.  */
+  /* Responsive globe size — shrink on small viewports so it fits mobile. */
+  useEffect(() => {
+    const update = () => {
+      const vw = window.innerWidth;
+      // On mobile, cap to viewport minus a 16px gutter on each side.
+      const capped = vw <= 640 ? Math.min(GLOBE_SIZE, vw - 32) : GLOBE_SIZE;
+      setGlobeSize(Math.max(220, capped));
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  /* Real country polygons from Natural Earth (world-atlas 110m). Used to
+     bake a border texture onto the globe shader — no separate meshes,
+     so they never interfere with the point raycaster that drives clicks. */
+  const countryFeatures = useMemo(() => {
+    const fc = topojson.feature(
+      countries110m as any,
+      countries110m.objects.countries as any,
+    );
+    return (fc as any).features as any[];
+  }, []);
+
+  /* Day/night material — created once with the baked country-border
+     texture, sun uniform updated on a timer. The borders are drawn by
+     the shader (no separate meshes), so they never interfere with the
+     point raycaster that drives marker clicks. */
   const globeMaterial = useMemo(() => {
-    const mat = createDayNightMaterial();
+    const bordersTex = drawCountryBorders(countryFeatures);
+    const mat = createDayNightMaterial(bordersTex);
     materialRef.current = mat;
     return mat;
-  }, []);
+  }, [countryFeatures]);
 
   /* Detect prefers-reduced-motion.                                    */
   useEffect(() => {
@@ -285,7 +467,8 @@ export default function GlobeVisual() {
       controls.autoRotate = !reducedMotion;
       controls.autoRotateSpeed = 0.5;
     }
-    globeEl.current?.pointOfView({ lat: 22, lng: 78, altitude: 2.0 });
+    // Neutral global view — not centered on any single country/region.
+    globeEl.current?.pointOfView({ lat: 18, lng: 0, altitude: 2.2 });
 
     const pause = () => {
       controls.autoRotate = false;
@@ -339,7 +522,7 @@ export default function GlobeVisual() {
     return (
       <div
         className="mx-auto flex flex-col items-center justify-center rounded-2xl border border-card-border bg-cream px-6 py-10 text-center"
-        style={{ width: GLOBE_SIZE, height: GLOBE_SIZE, maxWidth: "100%" }}
+        style={{ width: globeSize, height: globeSize, maxWidth: "100%" }}
         role="status"
       >
         <div className="mb-3 text-2xl" aria-hidden>
@@ -362,7 +545,7 @@ export default function GlobeVisual() {
     return (
       <div
         className="mx-auto flex flex-col items-center justify-center"
-        style={{ width: GLOBE_SIZE, height: GLOBE_SIZE, maxWidth: "100%" }}
+        style={{ width: globeSize, height: globeSize, maxWidth: "100%" }}
         role="status"
         aria-label="Loading world events"
       >
@@ -424,16 +607,17 @@ export default function GlobeVisual() {
         ))}
       </div>
 
-      {/* Globe */}
+      {/* Globe — auto-rotates continuously; pauses only while dragging. */}
       <div
+        ref={wrapperRef}
         className="relative"
-        style={{ width: GLOBE_SIZE, height: GLOBE_SIZE, maxWidth: "100%" }}
+        style={{ width: globeSize, height: globeSize, maxWidth: "100%" }}
         aria-label="Rotating 3D globe showing world events"
       >
         <Globe
           ref={globeEl}
-          width={GLOBE_SIZE}
-          height={GLOBE_SIZE}
+          width={globeSize}
+          height={globeSize}
           backgroundColor="rgba(0,0,0,0)"
           globeImageUrl={null}
           bumpImageUrl={null}
@@ -449,9 +633,9 @@ export default function GlobeVisual() {
           pointsData={points}
           pointLat={(d: any) => d.lat}
           pointLng={(d: any) => d.lng}
-          pointColor={(d: any) => categoryStyle(d.primary.category).dot}
-          pointAltitude={0.02}
-          pointRadius={(d: any) => (d.count > 1 ? 0.5 : 0.35)}
+          pointColor={() => "#ffdd00"}
+          pointAltitude={0.04}
+          pointRadius={(d: any) => (d.count > 1 ? 1.6 : 1.3)}
           pointResolution={16}
           pointsMerge={false}
           pointLabel={(d: any) => {

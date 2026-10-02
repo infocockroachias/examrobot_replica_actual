@@ -2,33 +2,49 @@
 
 import { useEffect, useState } from "react";
 import {
+  Activity,
   BarChart3,
   BookOpen,
+  ClipboardList,
   Database,
+  History,
+  HeartPulse,
   Layers,
   LayoutDashboard,
-  Link2,
   ListChecks,
+  Layers3,
+  Search,
   Sparkles,
-  Trash2,
+  Upload,
   Zap,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
-import { Badge } from "@/components/Badge";
 import StatCard from "@/components/StatCard";
 import { getAdminStats, AdminStats } from "@/lib/api";
 
 import QuestionsSection from "./QuestionsSection";
 import ExamsSection from "./ExamsSection";
+import ImportSection from "./ImportSection";
 import TopicIntelligenceSection from "./TopicIntelligenceSection";
 import ProvenanceSection from "./ProvenanceSection";
 import TestSeriesSection from "./TestSeriesSection";
 import PatternXraySection from "./PatternXraySection";
+import ImportHistorySection from "./ImportHistorySection";
+import DataQualitySection from "./DataQualitySection";
+import ReviewSection from "./ReviewSection";
+import AnalyticsSection from "./AnalyticsSection";
+import SubjectsSection from "./SubjectsSection";
 
 type Section =
   | "dashboard"
   | "questions"
   | "exams"
+  | "subjects"
+  | "import"
+  | "import-history"
+  | "review-queue"
+  | "data-quality"
+  | "analytics"
   | "topic-intelligence"
   | "provenance"
   | "test-series"
@@ -36,12 +52,18 @@ type Section =
 
 const NAV: { key: Section; label: string; icon: React.ReactNode; group: string }[] = [
   { key: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" />, group: "Overview" },
-  { key: "questions", label: "Questions", icon: <Database className="h-4 w-4" />, group: "Data" },
-  { key: "exams", label: "Exams & Papers", icon: <BookOpen className="h-4 w-4" />, group: "Data" },
-  { key: "topic-intelligence", label: "Topic Intelligence", icon: <Sparkles className="h-4 w-4" />, group: "Features" },
-  { key: "provenance", label: "PYQ Deep Decode", icon: <Layers className="h-4 w-4" />, group: "Features" },
-  { key: "test-series", label: "Topic Mastery", icon: <ListChecks className="h-4 w-4" />, group: "Features" },
-  { key: "pattern-xray", label: "Pattern X-Ray", icon: <Zap className="h-4 w-4" />, group: "Features" },
+  { key: "questions", label: "Questions", icon: <Database className="h-4 w-4" />, group: "Content" },
+  { key: "exams", label: "Exams & Papers", icon: <BookOpen className="h-4 w-4" />, group: "Content" },
+  { key: "subjects", label: "Subjects & Topics", icon: <Layers3 className="h-4 w-4" />, group: "Content" },
+  { key: "import", label: "Bulk Import", icon: <Upload className="h-4 w-4" />, group: "Content" },
+  { key: "import-history", label: "Import History", icon: <History className="h-4 w-4" />, group: "Content" },
+  { key: "review-queue", label: "Review Queue", icon: <ClipboardList className="h-4 w-4" />, group: "Operations" },
+  { key: "data-quality", label: "Data Quality", icon: <Search className="h-4 w-4" />, group: "Operations" },
+  { key: "analytics", label: "Analytics", icon: <BarChart3 className="h-4 w-4" />, group: "Operations" },
+  { key: "topic-intelligence", label: "Topic Intelligence", icon: <Sparkles className="h-4 w-4" />, group: "Intelligence" },
+  { key: "provenance", label: "PYQ Deep Decode", icon: <Layers className="h-4 w-4" />, group: "Intelligence" },
+  { key: "pattern-xray", label: "Pattern X-Ray", icon: <Zap className="h-4 w-4" />, group: "Intelligence" },
+  { key: "test-series", label: "Topic Mastery", icon: <ListChecks className="h-4 w-4" />, group: "Testing" },
 ];
 
 export default function AdminPage() {
@@ -72,6 +94,18 @@ export default function AdminPage() {
         return <QuestionsSection />;
       case "exams":
         return <ExamsSection />;
+      case "subjects":
+        return <SubjectsSection />;
+      case "import":
+        return <ImportSection />;
+      case "import-history":
+        return <ImportHistorySection />;
+      case "review-queue":
+        return <ReviewSection />;
+      case "data-quality":
+        return <DataQualitySection />;
+      case "analytics":
+        return <AnalyticsSection />;
       case "topic-intelligence":
         return <TopicIntelligenceSection />;
       case "provenance":
@@ -150,6 +184,12 @@ function DashboardView({ stats, error }: { stats: AdminStats | null; error: stri
     stats.patterns > 0
       ? Math.round((stats.patterns_with_brief / stats.patterns) * 100)
       : 0;
+  const healthColor =
+    stats.content_health >= 80
+      ? "bg-success-green"
+      : stats.content_health >= 50
+        ? "bg-warning-amber"
+        : "bg-danger-red";
 
   return (
     <div>
@@ -158,6 +198,7 @@ function DashboardView({ stats, error }: { stats: AdminStats | null; error: stri
         Overview of the content that powers all 4 feature modules.
       </p>
 
+      {/* Primary content stats */}
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           icon={<BookOpen className="h-5 w-5 text-primary-blue" />}
@@ -201,6 +242,77 @@ function DashboardView({ stats, error }: { stats: AdminStats | null; error: stri
         />
       </div>
 
+      {/* Health + activity row */}
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Content Health */}
+        <div className="rounded-xl border border-card-border bg-white p-5 lg:col-span-1">
+          <div className="flex items-center gap-2">
+            <HeartPulse className="h-5 w-5 text-primary-blue" />
+            <h3 className="text-sm font-bold text-text-primary">Content Health</h3>
+          </div>
+          <div className="mt-3 flex items-end gap-3">
+            <span className={`text-3xl font-bold ${healthColor === "bg-success-green" ? "text-success-green" : healthColor === "bg-warning-amber" ? "text-warning-amber" : "text-danger-red"}`}>
+              {stats.content_health}
+            </span>
+            <span className="mb-1 text-sm text-text-muted">/ 100</span>
+          </div>
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+            <div
+              className={`h-full rounded-full ${healthColor}`}
+              style={{ width: `${Math.min(100, stats.content_health)}%` }}
+            />
+          </div>
+          <dl className="mt-3 space-y-1 text-xs">
+            <div className="flex justify-between">
+              <dt className="text-text-muted">Unclassified</dt>
+              <dd className="font-medium text-text-secondary">{stats.unclassified_count}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-text-muted">No correct answer</dt>
+              <dd className="font-medium text-text-secondary">{stats.no_correct_count}</dd>
+            </div>
+          </dl>
+        </div>
+
+        {/* Recent Import Activity */}
+        <div className="rounded-xl border border-card-border bg-white p-5 lg:col-span-2">
+          <div className="flex items-center gap-2">
+            <Activity className="h-5 w-5 text-info-teal" />
+            <h3 className="text-sm font-bold text-text-primary">Recent Activity</h3>
+          </div>
+          {stats.recent_imports.length === 0 ? (
+            <p className="mt-3 text-sm text-text-muted">No imports yet. Use Bulk Import to get started.</p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {stats.recent_imports.map((imp) => (
+                <div
+                  key={imp.batch_id}
+                  className="flex items-center justify-between rounded-lg border border-card-border px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm text-text-primary">{imp.filename}</p>
+                    <p className="text-xs text-text-muted">
+                      Batch #{imp.batch_id}
+                      {imp.uploaded_at ? ` · ${new Date(imp.uploaded_at).toLocaleDateString()}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-2 text-xs">
+                    <span className="font-medium text-success-green">{imp.committed} committed</span>
+                    {imp.duplicates > 0 && (
+                      <span className="text-warning-amber">{imp.duplicates} dupes</span>
+                    )}
+                    {imp.needs_review > 0 && (
+                      <span className="text-danger-red">{imp.needs_review} review</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Feature map */}
       <div className="mt-8 rounded-xl border border-card-border bg-white p-5">
         <h3 className="text-sm font-bold text-text-primary">How the 4 features use this data</h3>
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">

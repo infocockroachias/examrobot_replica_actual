@@ -43,6 +43,15 @@ const emptyForm = (): FormState => ({
 
 type FormState = AdminQuestionInput & { subtopic: string };
 
+const SORT_OPTIONS = [
+  { value: "id_desc", label: "Newest first" },
+  { value: "id_asc", label: "Oldest first" },
+  { value: "year_desc", label: "Year (newest)" },
+  { value: "year_asc", label: "Year (oldest)" },
+  { value: "subject_asc", label: "Subject (A→Z)" },
+  { value: "subject_desc", label: "Subject (Z→A)" },
+];
+
 export default function QuestionsSection() {
   const [papers, setPapers] = useState<AdminPaper[]>([]);
   const [rows, setRows] = useState<AdminQuestion[]>([]);
@@ -50,8 +59,18 @@ export default function QuestionsSection() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [examFilter, setExamFilter] = useState<number | undefined>(undefined);
+  const [subjectFilter, setSubjectFilter] = useState("");
+  const [topicFilter, setTopicFilter] = useState("");
+  const [subtopicFilter, setSubtopicFilter] = useState("");
+  const [provenanceFilter, setProvenanceFilter] = useState<string>(""); // "" | "yes" | "no"
+  const [sort, setSort] = useState("id_desc");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Bulk selection state.
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkMsg, setBulkMsg] = useState<string | null>(null);
 
   // Drawer state
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -63,8 +82,8 @@ export default function QuestionsSection() {
   // Bulk upload state
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState("");
-  const [bulkBusy, setBulkBusy] = useState(false);
-  const [bulkMsg, setBulkMsg] = useState<string | null>(null);
+  const [bulkUploadBusy, setBulkUploadBusy] = useState(false);
+  const [bulkUploadMsg, setBulkUploadMsg] = useState<string | null>(null);
 
   const pageSize = 25;
 
@@ -73,7 +92,17 @@ export default function QuestionsSection() {
     setError(null);
     Promise.all([
       getAdminPapers(),
-      getAdminQuestions({ search, exam_id: examFilter, page, page_size: pageSize }),
+      getAdminQuestions({
+        search,
+        exam_id: examFilter,
+        subject: subjectFilter,
+        topic: topicFilter,
+        subtopic: subtopicFilter,
+        has_provenance: provenanceFilter === "yes" ? true : provenanceFilter === "no" ? false : undefined,
+        sort,
+        page,
+        page_size: pageSize,
+      }),
     ])
       .then(([p, r]) => {
         setPapers(p);
@@ -87,14 +116,14 @@ export default function QuestionsSection() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, examFilter]);
+  }, [page, examFilter, sort]);
 
-  // Reset to page 1 when search/exam filter changes.
+  // Reset to page 1 when any filter changes.
   useEffect(() => {
     setPage(1);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, examFilter]);
+  }, [search, examFilter, subjectFilter, topicFilter, subtopicFilter, provenanceFilter, sort]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -158,9 +187,31 @@ export default function QuestionsSection() {
     }
   };
 
-  const handleBulkUpload = async () => {
+  // Bulk delete selected.
+  const handleBulkDelete = async () => {
+    if (selected.size === 0) return;
+    if (!window.confirm(`Delete ${selected.size} selected questions? This cannot be undone.`)) {
+      return;
+    }
     setBulkBusy(true);
     setBulkMsg(null);
+    try {
+      for (const id of Array.from(selected)) {
+        await deleteQuestion(id);
+      }
+      setBulkMsg(`Deleted ${selected.size} questions.`);
+      setSelected(new Set());
+      load();
+    } catch (e) {
+      setBulkMsg(`Delete failed: ${(e as Error).message}`);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleBulkUpload = async () => {
+    setBulkUploadBusy(true);
+    setBulkUploadMsg(null);
     let parsed: AdminQuestionInput[];
     try {
       parsed = JSON.parse(bulkText);
@@ -168,19 +219,19 @@ export default function QuestionsSection() {
         throw new Error("JSON must be an array of questions");
       }
     } catch (e) {
-      setBulkMsg(`Invalid JSON: ${(e as Error).message}`);
-      setBulkBusy(false);
+      setBulkUploadMsg(`Invalid JSON: ${(e as Error).message}`);
+      setBulkUploadBusy(false);
       return;
     }
     try {
       const res = await bulkCreateQuestions(parsed);
-      setBulkMsg(`Created ${res.created} questions.`);
+      setBulkUploadMsg(`Created ${res.created} questions.`);
       setBulkText("");
       load();
     } catch (e) {
-      setBulkMsg(`Upload failed: ${(e as Error).message}`);
+      setBulkUploadMsg(`Upload failed: ${(e as Error).message}`);
     } finally {
-      setBulkBusy(false);
+      setBulkUploadBusy(false);
     }
   };
 
@@ -196,6 +247,35 @@ export default function QuestionsSection() {
     return Array.from(ids).sort((a, b) => (examNames.get(a) ?? "").localeCompare(examNames.get(b) ?? ""));
   }, [papers, examNames]);
 
+  // Toggle selection helpers.
+  const allOnPage = rows.length > 0 && rows.every((q) => selected.has(q.id));
+  const toggleOne = (id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleAllOnPage = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allOnPage) {
+        rows.forEach((q) => next.delete(q.id));
+      } else {
+        rows.forEach((q) => next.add(q.id));
+      }
+      return next;
+    });
+  };
+
+  const activeFilterCount = [
+    subjectFilter,
+    topicFilter,
+    subtopicFilter,
+    provenanceFilter,
+  ].filter(Boolean).length + (sort !== "id_desc" ? 1 : 0);
+
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -209,7 +289,7 @@ export default function QuestionsSection() {
           <button
             onClick={() => {
               setBulkOpen(true);
-              setBulkMsg(null);
+              setBulkUploadMsg(null);
               setBulkText("");
             }}
             className="inline-flex items-center gap-1.5 rounded-lg border border-card-border bg-white px-3 py-2 text-sm font-medium text-text-secondary hover:bg-gray-50"
@@ -233,31 +313,134 @@ export default function QuestionsSection() {
         </div>
       )}
 
-      {/* Filters */}
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search question text…"
-            className="rounded-lg border border-card-border bg-white py-2 pl-9 pr-3 text-sm focus:border-primary-blue focus:outline-none"
-          />
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div className="mt-4 flex items-center justify-between rounded-xl border border-primary-blue/30 bg-primary-blue/5 px-4 py-2.5">
+          <span className="text-sm font-medium text-primary-blue">
+            {selected.size} selected
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSelected(new Set())}
+              className="rounded-lg px-3 py-1.5 text-sm text-text-secondary hover:bg-gray-100"
+            >
+              Clear
+            </button>
+            <button
+              disabled={bulkBusy}
+              onClick={handleBulkDelete}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-danger-red px-3 py-1.5 text-sm font-medium text-white hover:bg-danger-red/90 disabled:opacity-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {bulkBusy ? "Deleting…" : "Delete selected"}
+            </button>
+          </div>
         </div>
-        <div className="relative">
-          <select
-            value={examFilter ?? ""}
-            onChange={(e) => setExamFilter(e.target.value ? Number(e.target.value) : undefined)}
-            className="appearance-none rounded-lg border border-card-border bg-white py-2 pl-3 pr-8 text-sm focus:border-primary-blue focus:outline-none"
-          >
-            <option value="">All exams</option>
-            {distinctExamIds.map((id) => (
-              <option key={id} value={id}>
-                {examNames.get(id)}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+      )}
+
+      {bulkMsg && (
+        <div className="mt-2 text-sm text-text-muted">{bulkMsg}</div>
+      )}
+
+      {/* Filters */}
+      <div className="mt-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search question text…"
+              className="w-full rounded-lg border border-card-border bg-white py-2 pl-9 pr-3 text-sm focus:border-primary-blue focus:outline-none"
+            />
+          </div>
+          <div className="relative">
+            <select
+              value={examFilter ?? ""}
+              onChange={(e) => setExamFilter(e.target.value ? Number(e.target.value) : undefined)}
+              className="appearance-none rounded-lg border border-card-border bg-white py-2 pl-3 pr-8 text-sm focus:border-primary-blue focus:outline-none"
+            >
+              <option value="">All exams</option>
+              {distinctExamIds.map((id) => (
+                <option key={id} value={id}>
+                  {examNames.get(id)}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+          </div>
+          <div className="relative">
+            <select
+              value={provenanceFilter}
+              onChange={(e) => setProvenanceFilter(e.target.value)}
+              className="appearance-none rounded-lg border border-card-border bg-white py-2 pl-3 pr-8 text-sm focus:border-primary-blue focus:outline-none"
+            >
+              <option value="">All provenance</option>
+              <option value="yes">Has provenance</option>
+              <option value="no">No provenance</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+          </div>
+          <div className="relative">
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value)}
+              className="appearance-none rounded-lg border border-card-border bg-white py-2 pl-3 pr-8 text-sm focus:border-primary-blue focus:outline-none"
+            >
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative">
+            <input
+              value={subjectFilter}
+              onChange={(e) => setSubjectFilter(e.target.value)}
+              placeholder="Filter subject…"
+              className="rounded-lg border border-card-border bg-white py-2 pl-3 pr-3 text-sm focus:border-primary-blue focus:outline-none"
+            />
+          </div>
+          <div className="relative">
+            <input
+              value={topicFilter}
+              onChange={(e) => setTopicFilter(e.target.value)}
+              placeholder="Filter topic…"
+              className="rounded-lg border border-card-border bg-white py-2 pl-3 pr-3 text-sm focus:border-primary-blue focus:outline-none"
+            />
+          </div>
+          <div className="relative">
+            <input
+              value={subtopicFilter}
+              onChange={(e) => setSubtopicFilter(e.target.value)}
+              placeholder="Filter subtopic…"
+              className="rounded-lg border border-card-border bg-white py-2 pl-3 pr-3 text-sm focus:border-primary-blue focus:outline-none"
+            />
+          </div>
+          {activeFilterCount > 0 && (
+            <button
+              onClick={() => {
+                setSubjectFilter("");
+                setTopicFilter("");
+                setSubtopicFilter("");
+                setProvenanceFilter("");
+                setSort("id_desc");
+              }}
+              className="inline-flex items-center gap-1 rounded-lg border border-card-border bg-white px-3 py-2 text-sm text-text-secondary hover:bg-gray-50"
+            >
+              <X className="h-3.5 w-3.5" />
+              Clear filters
+            </button>
+          )}
+          {activeFilterCount > 0 && (
+            <span className="text-xs text-text-muted">
+              {activeFilterCount} active filter{activeFilterCount > 1 ? "s" : ""}
+            </span>
+          )}
         </div>
       </div>
 
@@ -267,6 +450,15 @@ export default function QuestionsSection() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-card-border bg-gray-50 text-xs uppercase tracking-wider text-text-muted">
               <tr>
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allOnPage}
+                    onChange={toggleAllOnPage}
+                    className="rounded border-gray-300"
+                    title="Select all on page"
+                  />
+                </th>
                 <th className="px-4 py-3">ID</th>
                 <th className="px-4 py-3">Paper</th>
                 <th className="px-4 py-3">Q#</th>
@@ -279,19 +471,30 @@ export default function QuestionsSection() {
             <tbody className="divide-y divide-card-border">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-text-muted">
+                  <td colSpan={8} className="px-4 py-8 text-center text-text-muted">
                     Loading…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-text-muted">
+                  <td colSpan={8} className="px-4 py-8 text-center text-text-muted">
                     No questions match this filter.
                   </td>
                 </tr>
               ) : (
                 rows.map((q) => (
-                  <tr key={q.id} className="hover:bg-gray-50/50">
+                  <tr
+                    key={q.id}
+                    className={`hover:bg-gray-50/50 ${selected.has(q.id) ? "bg-primary-blue/5" : ""}`}
+                  >
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(q.id)}
+                        onChange={() => toggleOne(q.id)}
+                        className="rounded border-gray-300"
+                      />
+                    </td>
                     <td className="px-4 py-3 text-text-muted">{q.id}</td>
                     <td className="px-4 py-3">
                       <span className="text-text-secondary">
@@ -556,8 +759,8 @@ export default function QuestionsSection() {
         onClose={() => setBulkOpen(false)}
         text={bulkText}
         setText={setBulkText}
-        busy={bulkBusy}
-        msg={bulkMsg}
+        busy={bulkUploadBusy}
+        msg={bulkUploadMsg}
         onUpload={handleBulkUpload}
       />
     </div>

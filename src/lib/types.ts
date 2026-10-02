@@ -253,3 +253,125 @@ export interface EventsResponse {
   categories: string[];
   generated_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// Bulk Markdown Import
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// AI Extraction
+// ---------------------------------------------------------------------------
+
+export interface ProposedChange {
+  field: string;
+  action: "ADD" | "REPLACE" | "REMOVE";
+  original_value: unknown;
+  proposed_value: unknown;
+  reason: string;
+  evidence: string;
+  confidence: number;
+}
+
+export interface ConfidenceScores {
+  question_boundary: number;
+  question_text: number;
+  options: number;
+  answer: number;
+  solution: number;
+}
+
+export type QuestionStatus =
+  | "READY"
+  | "REVIEW_REQUIRED"
+  | "REVIEW"
+  | "DUPLICATE"
+  | "INVALID"
+  | "AI_EXTRACTION_FAILED"
+  | "DETECTED"
+  | "PROCESSING";
+
+export interface StagedQuestion {
+  temp_id: string;
+  index: number | string;
+  question_text: string;
+  options: { label: string; text: string; is_correct: boolean }[];
+  correct_answer: string | null;
+  solution: string;
+  year: number | null;
+  subject: string | null;
+  topic: string | null;
+  subtopic: string | null;
+  status: QuestionStatus;
+  classification_confidence: string | null;
+  classification_method: string | null;
+  is_duplicate: boolean;
+  duplicate_of: number | null;
+  duplicate_match_type: string | null;
+  needs_review: boolean;
+  review_reasons: string[];
+  // AI extraction fields.
+  extraction_method?: "deterministic" | "ai" | "hybrid" | "failed";
+  proposed_changes?: ProposedChange[];
+  issues?: string[];
+  confidence?: ConfidenceScores;
+  raw_block?: string;
+  // Stable identity.
+  block_hash?: string;
+}
+
+export interface ImportPreview {
+  upload_id: string;
+  filename: string;
+  document_meta: Record<string, unknown>;
+  total_parsed: number;
+  ready_count: number;
+  review_count: number;
+  duplicate_count: number;
+  invalid_count: number;
+  questions: StagedQuestion[];
+  errors: { index: number; raw_block: string; error: string; status: string }[];
+  // Enhanced summary stats.
+  total_detected?: number;
+  successfully_extracted?: number;
+  ai_processed?: number;
+  ai_reconstructions_proposed?: number;
+  // Reconciliation / integrity (Parts 12–14).
+  ai_failed_count?: number;
+  expected_question_numbers?: number[];
+  staged_question_numbers?: number[];
+  missing_question_numbers?: number[];
+  integrity_ok?: boolean;
+  // Recovery report (BUG 4): gap analysis + merged-question recovery.
+  recovery_report?: {
+    total_extracted: number;
+    extracted_numbers: number[];
+    expected_numbers: number[];
+    suspicious_gaps: number[];
+    recovered: number[];
+    confirmed_absent: number[];
+    unresolved: number[];
+  };
+  // Source provenance (PDF vs Markdown).
+  source_meta?: {
+    source_type: "markdown" | "pdf";
+    page_count?: number;
+    ocr_used?: boolean;
+    extraction_method?: string;
+    pdf_warnings?: string[];
+  };
+}
+
+export interface ImportBatch {
+  id: number;
+  filename: string;
+  source_document: string | null;
+  uploaded_at: string;
+  status: string;
+  admin_user: string | null;
+  total_parsed: number;
+  committed_count: number;
+  duplicate_count: number;
+  needs_review_count: number;
+  invalid_count: number;
+  committed_question_ids: number[];
+}
